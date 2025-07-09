@@ -35,7 +35,6 @@ Create a `.env` file in the root folder:
 
 ```env
 GENIUS_ACCESS_TOKEN=your_genius_api_key_here
-# Optional: OPENAI_API_KEY=your_openai_key_here
 ```
 
 ### 4. Run the app
