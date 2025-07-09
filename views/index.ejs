@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lyrics Search</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <!-- Theme Toggle -->
+  <div class="theme-toggle">
+    <input type="checkbox" id="toggle-mode" />
+    <label for="toggle-mode">
+      <span class="icon">🌙</span>
+      <span class="ball"></span>
+      <span class="icon">☀️</span>
+    </label>
+  </div>
+
+  <!-- Hero Header -->
+  <header class="hero-header">
+    <h1>
+      <span class="music-icon">🎶</span>
+      <span class="header-gradient">Find Any Song by Its Lyrics</span>
+    </h1>
+    <p class="subtext centered">
+      <strong>Can't remember the name?</strong> Just type a part of the lyrics stuck in your head, and we’ll find the music video for you — <em>fast</em>, <em>accurately</em>, and <em>no-ads</em>.
+    </p>
+  </header>
+
+  <!-- Search Form -->
+  <form action="/search" method="POST">
+    <input type="text" name="lyrics" placeholder="Enter part of the lyrics..." required />
+    <button type="submit">Search</button>
+  </form>
+
+  <!-- Results -->
+  <% if (results) { %>
+    <h2>Results:</h2>
+ <ul class="centered">
+  <% results.forEach(song => { %>
+    <li>
+      <strong>#<%= song.rank %></strong> — <%= song.title %> by <%= song.artist %>
+
+      <div class="lyrics-video-container">
+        <% if (song.videoId) { %>
+          <iframe 
+            src="https://www.youtube.com/embed/<%= song.videoId %>" 
+            allowfullscreen 
+            allow="autoplay; clipboard-write; encrypted-media; picture-in-picture;">
+          </iframe>
+        <% } else { %>
+          <p>No video found.</p>
+        <% } %>
+
+        <div class="lyrics-box">
+          <%= song.lyricsText %>
+        </div>
+      </div>
+    </li>
+  <% }) %>
+</ul>
+
+
+
+  <% } else if (error) { %>
+    <p class="error-message"><%= error %></p>
+  <% } %>
+
+  <!--  Theme JS -->
+  <script>
+    const toggleInput = document.getElementById('toggle-mode');
+    const body = document.body;
+
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+      body.classList.remove('dark');
+      toggleInput.checked = true;
+    } else {
+      body.classList.add('dark');
+      toggleInput.checked = false;
+    }
+
+    toggleInput.addEventListener('change', () => {
+      const isLight = toggleInput.checked;
+      body.classList.toggle('dark', !isLight);
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    });
+
+  </script>
+</body>
+</html>
