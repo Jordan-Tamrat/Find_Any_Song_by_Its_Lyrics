@@ -84,12 +84,12 @@ Visit: [http://localhost:3000](http://localhost:3000)
 ```
 ---
 
+## 👤 Contact
 
-👤 Contact
-**Name**: Yordanos Tamrat
-**Email**: yoratamrat@gmail.com
-**LinkedIn**: [Yordanos Tamrat](https://www.linkedin.com/in/yordanos-tamrat/). 
-**GitHub**: [Jordan-Tamrat](https://github.com/Jordan-Tamrat)
+* **Name**: Yordanos Tamrat
+* **Email**: yoratamrat@gmail.com
+* **LinkedIn**: [Yordanos Tamrat](https://www.linkedin.com/in/yordanos-tamrat/). 
+* **GitHub**: [Jordan-Tamrat](https://github.com/Jordan-Tamrat)
 
 
 
