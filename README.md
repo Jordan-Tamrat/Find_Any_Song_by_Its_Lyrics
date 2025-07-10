@@ -14,13 +14,19 @@
 
 ---
 
+## 🎥 Demo
+
+[![Watch the demo](https://img.youtube.com/vi/DekdeS5uWTU/0.jpg)](https://youtu.be/DekdeS5uWTU)
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/lyrics-finder.git
-cd lyrics-finder
+git clone https://github.com/Jordan-Tamrat/Find_Any_Song_by_Its_Lyrics.git
+cd Find_Any_Song_by_Its_Lyrics
 ````
 
 ### 2. Install dependencies
@@ -76,5 +82,16 @@ Visit: [http://localhost:3000](http://localhost:3000)
 ├── .gitignore
 ├── package.json
 ```
+---
+
+
+👤 Contact
+**Name**: Yordanos Tamrat
+**Email**: yoratamrat@gmail.com
+**LinkedIn**: [Yordanos Tamrat](https://www.linkedin.com/in/yordanos-tamrat/). 
+**GitHub**: [Jordan-Tamrat](https://github.com/Jordan-Tamrat)
+
+
+
 
 
