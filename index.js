@@ -210,13 +210,11 @@ async function fetchLyricsFromAlternativeAPI(songTitle, artistName) {
   try {
     console.log('Trying alternative lyrics API...');
     
-    // Try multiple alternative lyrics APIs
+    // Try multiple alternative lyrics APIs (removed broken ones)
     const apis = [
-      // API 1: Lyrics.ovh
+      // API 1: Lyrics.ovh (most reliable)
       `https://api.lyrics.ovh/v1/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
-      // API 2: Some Random API
-      `https://some-random-api.ml/lyrics?title=${encodeURIComponent(songTitle)}`,
-      // API 3: Genius API (if we have token)
+      // API 2: Genius API (if we have token and it's working)
       GENIUS_ACCESS_TOKEN ? `https://api.genius.com/search?q=${encodeURIComponent(songTitle + ' ' + artistName)}` : null
     ].filter(Boolean);
 
@@ -252,11 +250,13 @@ async function fetchLyricsFromAlternativeSource(songTitle, artistName) {
   try {
     console.log('Trying alternative web sources...');
     
-    // Try different lyrics websites
+    // Try different lyrics websites (improved URLs)
     const sources = [
       `https://www.musixmatch.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
-      `https://www.azlyrics.com/lyrics/${encodeURIComponent(artistName.toLowerCase().replace(/\s+/g, ''))}/${encodeURIComponent(songTitle.toLowerCase().replace(/\s+/g, ''))}.html`,
-      `https://www.lyrics.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`
+      `https://www.azlyrics.com/lyrics/${encodeURIComponent(artistName.toLowerCase().replace(/[^a-z0-9]/g, ''))}/${encodeURIComponent(songTitle.toLowerCase().replace(/[^a-z0-9]/g, ''))}.html`,
+      `https://www.lyrics.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
+      // Additional sources
+      `https://www.songlyrics.com/${encodeURIComponent(artistName.toLowerCase().replace(/\s+/g, '-'))}/${encodeURIComponent(songTitle.toLowerCase().replace(/\s+/g, '-'))}-lyrics/`
     ];
 
     for (const sourceUrl of sources) {
@@ -281,6 +281,112 @@ async function fetchLyricsFromAlternativeSource(songTitle, artistName) {
   } catch (error) {
     console.error('Alternative source method failed:', error.message);
     throw error;
+  }
+}
+
+// NEW: Parse lyrics from alternative API responses (improved)
+function parseAlternativeLyrics(data, source) {
+  try {
+    console.log(`Parsing lyrics from ${source}...`);
+    
+    if (source === 'lyrics.ovh') {
+      if (data.lyrics) {
+        // Clean up the lyrics
+        const cleanedLyrics = data.lyrics
+          .replace(/\r\n/g, '\n')
+          .replace(/\r/g, '\n')
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0)
+          .join('\n');
+        
+        console.log(`Successfully parsed ${cleanedLyrics.split('\n').length} lines from lyrics.ovh`);
+        return cleanedLyrics;
+      }
+    } else if (source === 'genius-api') {
+      if (data.response && data.response.hits && data.response.hits.length > 0) {
+        // This would need to be processed further to get actual lyrics
+        return 'Lyrics available via Genius API (requires additional processing)';
+      }
+    }
+    
+    return 'Lyrics not found in API response.';
+  } catch (err) {
+    console.error(`parseAlternativeLyrics failed for ${source}:`, err.message);
+    return 'Lyrics parsing failed.';
+  }
+}
+
+// NEW: Enhanced lyrics cleaner for alternative sources
+function cleanLyricsFromAlternativeSource($, source) {
+  try {
+    console.log(`Starting lyrics extraction from ${source}...`);
+    
+    let lyricsContainer;
+    
+    if (source === 'musixmatch') {
+      lyricsContainer = $('.lyrics__content__ok, .lyrics__content, [class*="lyrics"]');
+    } else if (source === 'azlyrics') {
+      lyricsContainer = $('.ringtone, .lyricsh, .lyrics');
+    } else if (source === 'lyrics.com') {
+      lyricsContainer = $('.lyric-body, .lyrics, [class*="lyrics"]');
+    } else if (source === 'songlyrics') {
+      lyricsContainer = $('.songLyricsDiv, .lyrics, [class*="lyrics"]');
+    } else {
+      // Generic fallback
+      lyricsContainer = $('.lyrics, .song-lyrics, [class*="lyrics"], [class*="Lyrics"], .Lyrics__Container-sc-1ynbvzw-1');
+    }
+    
+    console.log(`Found ${lyricsContainer.length} containers for ${source}`);
+    
+    if (!lyricsContainer || lyricsContainer.length === 0) {
+      // Try generic method
+      lyricsContainer = $('div').filter((i, el) => {
+        const text = $(el).text();
+        return text.length > 200 && text.includes('\n') && 
+               (text.includes('[') || text.includes(']') || 
+                text.match(/[A-Z][a-z]+/g)?.length > 10);
+      });
+      console.log(`Generic method found ${lyricsContainer.length} containers`);
+    }
+
+    if (!lyricsContainer || lyricsContainer.length === 0) {
+      console.warn("No lyrics containers found");
+      return 'Lyrics not found.';
+    }
+
+    const cleanChunks = [];
+
+    lyricsContainer.each((i, el) => {
+      const children = $(el).contents();
+
+      children.each((j, child) => {
+        const isMetadata = $(child).attr && $(child).attr('data-exclude-from-selection');
+        if (!isMetadata) {
+          const text = $(child).text ? $(child).text().trim() : $(child).toString().trim();
+          if (text.length > 0) cleanChunks.push(text);
+        }
+      });
+    });
+
+    if (cleanChunks.length === 0) {
+      console.warn("No lyric lines extracted from containers");
+      return 'Lyrics not found.';
+    }
+
+    const cleanedLyrics = cleanChunks
+      .join('\n')
+      .replace(/\n{2,}/g, '\n\n')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n');
+
+    console.log(`Successfully extracted ${cleanedLyrics.split('\n').length} lines of lyrics from ${source}`);
+    return cleanedLyrics;
+  } catch (err) {
+    console.error(`cleanLyricsFromAlternativeSource failed for ${source}:`, err.message);
+    return 'Lyrics not found due to error.';
   }
 }
 
@@ -363,33 +469,6 @@ function cleanLyrics($) {
   } catch (err) {
     console.error("cleanLyrics failed:", err.message);
     return 'Lyrics not found due to error.';
-  }
-}
-
-// NEW: Parse lyrics from alternative API responses
-function parseAlternativeLyrics(data, source) {
-  try {
-    console.log(`Parsing lyrics from ${source}...`);
-    
-    if (source === 'lyrics.ovh') {
-      if (data.lyrics) {
-        return data.lyrics;
-      }
-    } else if (source === 'some-random-api') {
-      if (data.lyrics) {
-        return data.lyrics;
-      }
-    } else if (source === 'genius-api') {
-      if (data.response && data.response.hits && data.response.hits.length > 0) {
-        // This would need to be processed further to get actual lyrics
-        return 'Lyrics available via Genius API (requires additional processing)';
-      }
-    }
-    
-    return 'Lyrics not found in API response.';
-  } catch (err) {
-    console.error(`parseAlternativeLyrics failed for ${source}:`, err.message);
-    return 'Lyrics parsing failed.';
   }
 }
 
@@ -496,10 +575,22 @@ app.post('/search', async (req, res) => {
             }
           }
           
-          // If we got page data, extract lyrics
+          // If we got page data, extract lyrics based on the source
           if (pageData && methodUsed !== 'alternative-api') {
             const $ = cheerio.load(pageData);
-            lyricsText = cleanLyrics($);
+            
+            // Determine the source and use appropriate parsing
+            if (methodUsed === 'alternative-source') {
+              // Try to determine which source worked
+              const url = pageData.includes('musixmatch') ? 'musixmatch' :
+                         pageData.includes('azlyrics') ? 'azlyrics' :
+                         pageData.includes('lyrics.com') ? 'lyrics.com' :
+                         pageData.includes('songlyrics') ? 'songlyrics' : 'generic';
+              lyricsText = cleanLyricsFromAlternativeSource($, url);
+            } else {
+              // Use standard Genius parsing
+              lyricsText = cleanLyrics($);
+            }
           }
           
           // Add delay between requests
@@ -618,7 +709,61 @@ app.get('/debug/:songId', async (req, res) => {
   }
 });
 
+// Status endpoint to check service health
+app.get('/status', async (req, res) => {
+  try {
+    // Test if Genius API is working
+    let geniusStatus = 'unknown';
+    try {
+      const testResponse = await axios.get('https://api.genius.com/search', {
+        params: { q: 'test' },
+        headers: { Authorization: `Bearer ${GENIUS_ACCESS_TOKEN}` },
+        timeout: 5000
+      });
+      geniusStatus = testResponse.status === 200 ? 'working' : 'error';
+    } catch (error) {
+      geniusStatus = error.response?.status === 401 ? 'auth_error' : 'error';
+    }
+
+    // Test if alternative API is working
+    let alternativeApiStatus = 'unknown';
+    try {
+      const testResponse = await axios.get('https://api.lyrics.ovh/v1/test/test', {
+        timeout: 5000
+      });
+      alternativeApiStatus = testResponse.status === 200 ? 'working' : 'error';
+    } catch (error) {
+      alternativeApiStatus = error.response?.status === 404 ? 'working' : 'error';
+    }
+
+    res.json({
+      status: 'operational',
+      timestamp: new Date().toISOString(),
+      services: {
+        genius_api: geniusStatus,
+        alternative_api: alternativeApiStatus,
+        genius_scraping: 'blocked', // We know this is blocked
+        alternative_sources: 'available'
+      },
+      methods: {
+        method1: 'Genius Scraping (Blocked on Render)',
+        method2: 'Alternative Scraping (Blocked on Render)',
+        method3: 'Session-based Scraping (Blocked on Render)',
+        method4: 'Alternative APIs (Working)',
+        method5: 'Alternative Web Sources (Working)'
+      }
+    });
+  } catch (error) {
+    res.json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   console.log(`Debug endpoint available at http://localhost:${port}/debug/[song-id]`);
+  console.log(`Status endpoint available at http://localhost:${port}/status`);
 });
