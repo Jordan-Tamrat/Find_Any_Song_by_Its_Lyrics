@@ -205,22 +205,82 @@ async function fetchLyricsWithSession(url) {
   }
 }
 
-// Debug function to log response details
-function logResponseDetails(response, url) {
-  console.log(`Response for ${url}:`);
-  console.log(`- Status: ${response.status}`);
-  console.log(`- Content-Type: ${response.headers['content-type']}`);
-  console.log(`- Content-Length: ${response.headers['content-length']}`);
-  console.log(`- Server: ${response.headers['server']}`);
-  console.log(`- X-Powered-By: ${response.headers['x-powered-by']}`);
-  
-  // Check if we got a valid HTML response
-  const html = response.data;
-  if (html && typeof html === 'string') {
-    console.log(`- HTML length: ${html.length}`);
-    console.log(`- Contains 'lyrics': ${html.includes('lyrics')}`);
-    console.log(`- Contains 'data-lyrics-container': ${html.includes('data-lyrics-container')}`);
-    console.log(`- Contains 'genius': ${html.includes('genius')}`);
+// NEW: Alternative lyrics API fallback
+async function fetchLyricsFromAlternativeAPI(songTitle, artistName) {
+  try {
+    console.log('Trying alternative lyrics API...');
+    
+    // Try multiple alternative lyrics APIs
+    const apis = [
+      // API 1: Lyrics.ovh
+      `https://api.lyrics.ovh/v1/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
+      // API 2: Some Random API
+      `https://some-random-api.ml/lyrics?title=${encodeURIComponent(songTitle)}`,
+      // API 3: Genius API (if we have token)
+      GENIUS_ACCESS_TOKEN ? `https://api.genius.com/search?q=${encodeURIComponent(songTitle + ' ' + artistName)}` : null
+    ].filter(Boolean);
+
+    for (const apiUrl of apis) {
+      try {
+        console.log(`Trying API: ${apiUrl}`);
+        const response = await axios.get(apiUrl, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        });
+
+        if (response.status === 200 && response.data) {
+          console.log('Alternative API succeeded');
+          return response.data;
+        }
+      } catch (apiError) {
+        console.log(`API ${apiUrl} failed:`, apiError.message);
+        continue;
+      }
+    }
+    
+    throw new Error('All alternative APIs failed');
+  } catch (error) {
+    console.error('Alternative API method failed:', error.message);
+    throw error;
+  }
+}
+
+// NEW: Web scraping fallback using different domains
+async function fetchLyricsFromAlternativeSource(songTitle, artistName) {
+  try {
+    console.log('Trying alternative web sources...');
+    
+    // Try different lyrics websites
+    const sources = [
+      `https://www.musixmatch.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
+      `https://www.azlyrics.com/lyrics/${encodeURIComponent(artistName.toLowerCase().replace(/\s+/g, ''))}/${encodeURIComponent(songTitle.toLowerCase().replace(/\s+/g, ''))}.html`,
+      `https://www.lyrics.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`
+    ];
+
+    for (const sourceUrl of sources) {
+      try {
+        console.log(`Trying source: ${sourceUrl}`);
+        const response = await axios.get(sourceUrl, {
+          headers: getBrowserHeaders(0),
+          timeout: 15000
+        });
+
+        if (response.status === 200 && response.data) {
+          console.log('Alternative source succeeded');
+          return response.data;
+        }
+      } catch (sourceError) {
+        console.log(`Source ${sourceUrl} failed:`, sourceError.message);
+        continue;
+      }
+    }
+    
+    throw new Error('All alternative sources failed');
+  } catch (error) {
+    console.error('Alternative source method failed:', error.message);
+    throw error;
   }
 }
 
@@ -306,6 +366,33 @@ function cleanLyrics($) {
   }
 }
 
+// NEW: Parse lyrics from alternative API responses
+function parseAlternativeLyrics(data, source) {
+  try {
+    console.log(`Parsing lyrics from ${source}...`);
+    
+    if (source === 'lyrics.ovh') {
+      if (data.lyrics) {
+        return data.lyrics;
+      }
+    } else if (source === 'some-random-api') {
+      if (data.lyrics) {
+        return data.lyrics;
+      }
+    } else if (source === 'genius-api') {
+      if (data.response && data.response.hits && data.response.hits.length > 0) {
+        // This would need to be processed further to get actual lyrics
+        return 'Lyrics available via Genius API (requires additional processing)';
+      }
+    }
+    
+    return 'Lyrics not found in API response.';
+  } catch (err) {
+    console.error(`parseAlternativeLyrics failed for ${source}:`, err.message);
+    return 'Lyrics parsing failed.';
+  }
+}
+
 app.post('/search', async (req, res) => {
   const lyrics = req.body.lyrics;
 
@@ -336,11 +423,11 @@ app.post('/search', async (req, res) => {
 
         let lyricsText = 'Lyrics not found.';
         try {
-          // Try all three methods in sequence
+          // Try all methods in sequence
           let pageData;
           let methodUsed = 'none';
           
-          // Method 1: Primary method with enhanced headers
+          // Method 1: Primary Genius scraping
           try {
             console.log(`\n=== Trying Method 1 for ${song.title} ===`);
             pageData = await fetchLyricsWithRetry(song.url);
@@ -349,7 +436,7 @@ app.post('/search', async (req, res) => {
           } catch (primaryError) {
             console.log(`✗ Method 1 failed for ${song.title}: ${primaryError.message}`);
             
-            // Method 2: Alternative method with different headers
+            // Method 2: Alternative scraping approach
             try {
               console.log(`\n=== Trying Method 2 for ${song.title} ===`);
               pageData = await fetchLyricsAlternative(song.url);
@@ -358,7 +445,7 @@ app.post('/search', async (req, res) => {
             } catch (alternativeError) {
               console.log(`✗ Method 2 failed for ${song.title}: ${alternativeError.message}`);
               
-              // Method 3: Session-based method
+              // Method 3: Session-based scraping
               try {
                 console.log(`\n=== Trying Method 3 for ${song.title} ===`);
                 pageData = await fetchLyricsWithSession(song.url);
@@ -366,26 +453,54 @@ app.post('/search', async (req, res) => {
                 console.log(`✓ Method 3 succeeded for ${song.title}`);
               } catch (sessionError) {
                 console.log(`✗ Method 3 failed for ${song.title}: ${sessionError.message}`);
-                throw new Error(`All methods failed: ${primaryError.message}, ${alternativeError.message}, ${sessionError.message}`);
+                
+                // Method 4: Alternative APIs
+                try {
+                  console.log(`\n=== Trying Method 4 (Alternative APIs) for ${song.title} ===`);
+                  const apiData = await fetchLyricsFromAlternativeAPI(song.title, song.primary_artist.name);
+                  methodUsed = 'alternative-api';
+                  console.log(`✓ Method 4 succeeded for ${song.title}`);
+                  
+                  // Parse the API response
+                  lyricsText = parseAlternativeLyrics(apiData, 'lyrics.ovh');
+                  
+                  // Add delay and continue to next song
+                  if (index < hits.length - 1) {
+                    const delayTime = 2000 + Math.random() * 3000;
+                    console.log(`Waiting ${Math.round(delayTime)}ms before next request...`);
+                    await delay(delayTime);
+                  }
+                  
+                  return {
+                    rank: index + 1,
+                    title: song.title,
+                    artist: song.primary_artist.name,
+                    videoId,
+                    lyricsText,
+                  };
+                } catch (apiError) {
+                  console.log(`✗ Method 4 failed for ${song.title}: ${apiError.message}`);
+                  
+                  // Method 5: Alternative web sources
+                  try {
+                    console.log(`\n=== Trying Method 5 (Alternative Sources) for ${song.title} ===`);
+                    pageData = await fetchLyricsFromAlternativeSource(song.title, song.primary_artist.name);
+                    methodUsed = 'alternative-source';
+                    console.log(`✓ Method 5 succeeded for ${song.title}`);
+                  } catch (sourceError) {
+                    console.log(`✗ Method 5 failed for ${song.title}: ${sourceError.message}`);
+                    throw new Error(`All methods failed: ${primaryError.message}, ${alternativeError.message}, ${sessionError.message}, ${apiError.message}, ${sourceError.message}`);
+                  }
+                }
               }
             }
           }
           
-          // Log the response details for debugging
-          if (pageData) {
-            console.log(`\n=== Response Analysis for ${song.title} (Method: ${methodUsed}) ===`);
-            console.log(`- Data type: ${typeof pageData}`);
-            console.log(`- Data length: ${pageData.length}`);
-            console.log(`- Contains 'lyrics': ${pageData.includes('lyrics')}`);
-            console.log(`- Contains 'data-lyrics-container': ${pageData.includes('data-lyrics-container')}`);
-            console.log(`- Contains 'genius': ${pageData.includes('genius')}`);
-            console.log(`- Contains 'blocked': ${pageData.includes('blocked')}`);
-            console.log(`- Contains 'captcha': ${pageData.includes('captcha')}`);
-            console.log(`- Contains 'cloudflare': ${pageData.includes('cloudflare')}`);
+          // If we got page data, extract lyrics
+          if (pageData && methodUsed !== 'alternative-api') {
+            const $ = cheerio.load(pageData);
+            lyricsText = cleanLyrics($);
           }
-          
-          const $ = cheerio.load(pageData);
-          lyricsText = cleanLyrics($);
           
           // Add delay between requests
           if (index < hits.length - 1) {
@@ -427,7 +542,9 @@ app.get('/debug/:songId', async (req, res) => {
     const results = {
       method1: { success: false, error: null, data: null },
       method2: { success: false, error: null, data: null },
-      method3: { success: false, error: null, data: null }
+      method3: { success: false, error: null, data: null },
+      method4: { success: false, error: null, data: null },
+      method5: { success: false, error: null, data: null }
     };
     
     // Test Method 1
@@ -461,6 +578,28 @@ app.get('/debug/:songId', async (req, res) => {
     } catch (error) {
       results.method3 = { success: false, error: error.message, data: null };
       console.log('✗ Method 3 failed:', error.message);
+    }
+    
+    // Test Method 4 (Alternative APIs)
+    try {
+      console.log('Testing Method 4...');
+      const data4 = await fetchLyricsFromAlternativeAPI('Test Song', 'Test Artist');
+      results.method4 = { success: true, error: null, data: JSON.stringify(data4).substring(0, 500) + '...' };
+      console.log('✓ Method 4 succeeded');
+    } catch (error) {
+      results.method4 = { success: false, error: error.message, data: null };
+      console.log('✗ Method 4 failed:', error.message);
+    }
+    
+    // Test Method 5 (Alternative Sources)
+    try {
+      console.log('Testing Method 5...');
+      const data5 = await fetchLyricsFromAlternativeSource('Test Song', 'Test Artist');
+      results.method5 = { success: true, error: null, data: data5.substring(0, 500) + '...' };
+      console.log('✓ Method 5 succeeded');
+    } catch (error) {
+      results.method5 = { success: false, error: error.message, data: null };
+      console.log('✗ Method 5 failed:', error.message);
     }
     
     res.json({
