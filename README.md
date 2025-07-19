@@ -4,6 +4,12 @@
 
 ---
 
+## 🌐 Live Demo
+
+▶️ Try it here: [https://songbylyrics.up.railway.app](https://songbylyrics.up.railway.app)
+
+---
+
 ## 🌟 Features
 
 - 🔍 Search songs by partial or fuzzy lyrics
