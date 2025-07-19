@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const ytSearch = require('youtube-search-without-api-key');
 const cheerio = require('cheerio');
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,423 +16,17 @@ app.use(express.static('public'));
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
 
-// Enhanced browser-like headers with more realistic patterns
-const getBrowserHeaders = (attempt = 0) => {
-  const userAgents = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0'
-  ];
-
-  const acceptLanguages = [
-    'en-US,en;q=0.9',
-    'en-GB,en;q=0.9',
-    'en-CA,en;q=0.9',
-    'en-AU,en;q=0.9'
-  ];
-
-  return {
-    'User-Agent': userAgents[attempt % userAgents.length],
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-    'Accept-Language': acceptLanguages[attempt % acceptLanguages.length],
-    'Accept-Encoding': 'gzip, deflate, br',
-    'DNT': '1',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0',
-    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"'
-  };
-};
-
-// Helper function to add delay
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Session management for cookies
-let sessionCookies = '';
-
-// Enhanced lyrics fetching with multiple strategies
-async function fetchLyricsWithRetry(url, maxRetries = 3) {
-  console.log(`Starting lyrics fetch for: ${url}`);
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Attempt ${attempt}/${maxRetries} for ${url}`);
-      
-      const headers = getBrowserHeaders(attempt - 1);
-      
-      // Add cookies if we have them
-      if (sessionCookies) {
-        headers['Cookie'] = sessionCookies;
-      }
-
-      const response = await axios.get(url, {
-        headers,
-        timeout: 20000, // 20 second timeout
-        maxRedirects: 5,
-        decompress: true,
-        validateStatus: function (status) {
-          return status >= 200 && status < 300;
-        }
-      });
-
-      // Store cookies for future requests
-      if (response.headers['set-cookie']) {
-        sessionCookies = response.headers['set-cookie'].map(cookie => cookie.split(';')[0]).join('; ');
-      }
-
-      if (response.status === 200 && response.data) {
-        console.log(`Successfully fetched lyrics on attempt ${attempt}`);
-        return response.data;
-      }
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error.message);
-      
-      if (error.response) {
-        const status = error.response.status;
-        console.log(`HTTP Status: ${status}`);
-        
-        if (status === 403) {
-          console.log('Access forbidden - trying different approach');
-          // Clear cookies and try again
-          sessionCookies = '';
-        } else if (status === 429) {
-          console.log('Rate limited - waiting longer');
-          await delay(15000); // Wait 15 seconds
-        } else if (status === 503) {
-          console.log('Service unavailable - waiting');
-          await delay(10000);
-        }
-      }
-      
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      
-      // Exponential backoff with jitter
-      const baseDelay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-      const jitter = Math.random() * 1000;
-      const waitTime = baseDelay + jitter;
-      console.log(`Waiting ${Math.round(waitTime)}ms before retry...`);
-      await delay(waitTime);
-    }
-  }
-  
-  throw new Error('All retry attempts failed');
-}
-
-// Alternative lyrics fetching method using different approach
-async function fetchLyricsAlternative(url) {
-  try {
-    console.log('Trying alternative lyrics fetching method...');
-    
-    // First, try to get the page with a different approach
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-      },
-      timeout: 15000,
-      maxRedirects: 3
-    });
-
-    return response.data;
-  } catch (error) {
-    console.error('Alternative method failed:', error.message);
-    throw error;
-  }
-}
-
-// Third fallback method - simulate a more realistic browser session
-async function fetchLyricsWithSession(url) {
-  try {
-    console.log('Trying session-based lyrics fetching...');
-    
-    // First, visit the main page to establish a session
-    const mainPageResponse = await axios.get('https://genius.com', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-      },
-      timeout: 10000
-    });
-
-    // Extract cookies from the main page
-    let cookies = '';
-    if (mainPageResponse.headers['set-cookie']) {
-      cookies = mainPageResponse.headers['set-cookie'].map(cookie => cookie.split(';')[0]).join('; ');
-    }
-
-    // Wait a bit to simulate human behavior
-    await delay(2000 + Math.random() * 3000);
-
-    // Now fetch the actual lyrics page with the session cookies
-    const lyricsResponse = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': 'https://genius.com',
-        'Cookie': cookies
-      },
-      timeout: 15000
-    });
-
-    return lyricsResponse.data;
-  } catch (error) {
-    console.error('Session-based method failed:', error.message);
-    throw error;
-  }
-}
-
-// NEW: Alternative lyrics API fallback
-async function fetchLyricsFromAlternativeAPI(songTitle, artistName) {
-  try {
-    console.log('Trying alternative lyrics API...');
-    
-    // Try multiple alternative lyrics APIs (removed broken ones)
-    const apis = [
-      // API 1: Lyrics.ovh (most reliable)
-      `https://api.lyrics.ovh/v1/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
-      // API 2: Genius API (if we have token and it's working)
-      GENIUS_ACCESS_TOKEN ? `https://api.genius.com/search?q=${encodeURIComponent(songTitle + ' ' + artistName)}` : null
-    ].filter(Boolean);
-
-    for (const apiUrl of apis) {
-      try {
-        console.log(`Trying API: ${apiUrl}`);
-        const response = await axios.get(apiUrl, {
-          timeout: 10000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          }
-        });
-
-        if (response.status === 200 && response.data) {
-          console.log('Alternative API succeeded');
-          return response.data;
-        }
-      } catch (apiError) {
-        console.log(`API ${apiUrl} failed:`, apiError.message);
-        continue;
-      }
-    }
-    
-    throw new Error('All alternative APIs failed');
-  } catch (error) {
-    console.error('Alternative API method failed:', error.message);
-    throw error;
-  }
-}
-
-// NEW: Web scraping fallback using different domains
-async function fetchLyricsFromAlternativeSource(songTitle, artistName) {
-  try {
-    console.log('Trying alternative web sources...');
-    
-    // Try different lyrics websites (improved URLs)
-    const sources = [
-      `https://www.musixmatch.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
-      `https://www.azlyrics.com/lyrics/${encodeURIComponent(artistName.toLowerCase().replace(/[^a-z0-9]/g, ''))}/${encodeURIComponent(songTitle.toLowerCase().replace(/[^a-z0-9]/g, ''))}.html`,
-      `https://www.lyrics.com/lyrics/${encodeURIComponent(artistName)}/${encodeURIComponent(songTitle)}`,
-      // Additional sources
-      `https://www.songlyrics.com/${encodeURIComponent(artistName.toLowerCase().replace(/\s+/g, '-'))}/${encodeURIComponent(songTitle.toLowerCase().replace(/\s+/g, '-'))}-lyrics/`
-    ];
-
-    for (const sourceUrl of sources) {
-      try {
-        console.log(`Trying source: ${sourceUrl}`);
-        const response = await axios.get(sourceUrl, {
-          headers: getBrowserHeaders(0),
-          timeout: 15000
-        });
-
-        if (response.status === 200 && response.data) {
-          console.log('Alternative source succeeded');
-          return response.data;
-        }
-      } catch (sourceError) {
-        console.log(`Source ${sourceUrl} failed:`, sourceError.message);
-        continue;
-      }
-    }
-    
-    throw new Error('All alternative sources failed');
-  } catch (error) {
-    console.error('Alternative source method failed:', error.message);
-    throw error;
-  }
-}
-
-// NEW: Parse lyrics from alternative API responses (improved)
-function parseAlternativeLyrics(data, source) {
-  try {
-    console.log(`Parsing lyrics from ${source}...`);
-    
-    if (source === 'lyrics.ovh') {
-      if (data.lyrics) {
-        // Clean up the lyrics
-        const cleanedLyrics = data.lyrics
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n')
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line.length > 0)
-          .join('\n');
-        
-        console.log(`Successfully parsed ${cleanedLyrics.split('\n').length} lines from lyrics.ovh`);
-        return cleanedLyrics;
-      }
-    } else if (source === 'genius-api') {
-      if (data.response && data.response.hits && data.response.hits.length > 0) {
-        // This would need to be processed further to get actual lyrics
-        return 'Lyrics available via Genius API (requires additional processing)';
-      }
-    }
-    
-    return 'Lyrics not found in API response.';
-  } catch (err) {
-    console.error(`parseAlternativeLyrics failed for ${source}:`, err.message);
-    return 'Lyrics parsing failed.';
-  }
-}
-
-// NEW: Enhanced lyrics cleaner for alternative sources
-function cleanLyricsFromAlternativeSource($, source) {
-  try {
-    console.log(`Starting lyrics extraction from ${source}...`);
-    
-    let lyricsContainer;
-    
-    if (source === 'musixmatch') {
-      lyricsContainer = $('.lyrics__content__ok, .lyrics__content, [class*="lyrics"]');
-    } else if (source === 'azlyrics') {
-      lyricsContainer = $('.ringtone, .lyricsh, .lyrics');
-    } else if (source === 'lyrics.com') {
-      lyricsContainer = $('.lyric-body, .lyrics, [class*="lyrics"]');
-    } else if (source === 'songlyrics') {
-      lyricsContainer = $('.songLyricsDiv, .lyrics, [class*="lyrics"]');
-    } else {
-      // Generic fallback
-      lyricsContainer = $('.lyrics, .song-lyrics, [class*="lyrics"], [class*="Lyrics"], .Lyrics__Container-sc-1ynbvzw-1');
-    }
-    
-    console.log(`Found ${lyricsContainer.length} containers for ${source}`);
-    
-    if (!lyricsContainer || lyricsContainer.length === 0) {
-      // Try generic method
-      lyricsContainer = $('div').filter((i, el) => {
-        const text = $(el).text();
-        return text.length > 200 && text.includes('\n') && 
-               (text.includes('[') || text.includes(']') || 
-                text.match(/[A-Z][a-z]+/g)?.length > 10);
-      });
-      console.log(`Generic method found ${lyricsContainer.length} containers`);
-    }
-
-    if (!lyricsContainer || lyricsContainer.length === 0) {
-      console.warn("No lyrics containers found");
-      return 'Lyrics not found.';
-    }
-
-    const cleanChunks = [];
-
-    lyricsContainer.each((i, el) => {
-      const children = $(el).contents();
-
-      children.each((j, child) => {
-        const isMetadata = $(child).attr && $(child).attr('data-exclude-from-selection');
-        if (!isMetadata) {
-          const text = $(child).text ? $(child).text().trim() : $(child).toString().trim();
-          if (text.length > 0) cleanChunks.push(text);
-        }
-      });
-    });
-
-    if (cleanChunks.length === 0) {
-      console.warn("No lyric lines extracted from containers");
-      return 'Lyrics not found.';
-    }
-
-    const cleanedLyrics = cleanChunks
-      .join('\n')
-      .replace(/\n{2,}/g, '\n\n')
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .join('\n');
-
-    console.log(`Successfully extracted ${cleanedLyrics.split('\n').length} lines of lyrics from ${source}`);
-    return cleanedLyrics;
-  } catch (err) {
-    console.error(`cleanLyricsFromAlternativeSource failed for ${source}:`, err.message);
-    return 'Lyrics not found due to error.';
-  }
-}
 
 app.get('/', (req, res) => {
   res.render('index', { results: null, error: null });
 });
 
-// Enhanced lyrics cleaner with multiple extraction methods
+// lyrics cleaner
 function cleanLyrics($) {
   try {
-    console.log('Starting lyrics extraction...');
-    
-    // Method 1: Standard Genius lyrics container
-    let lyricsContainer = $('[data-lyrics-container="true"]');
-    console.log(`Method 1 found ${lyricsContainer.length} containers`);
-    
-    // Method 2: Common lyrics selectors
+    const lyricsContainer = $('[data-lyrics-container="true"]');
     if (!lyricsContainer || lyricsContainer.length === 0) {
-      lyricsContainer = $('.lyrics, .song-lyrics, [class*="lyrics"], [class*="Lyrics"], .Lyrics__Container-sc-1ynbvzw-1');
-      console.log(`Method 2 found ${lyricsContainer.length} containers`);
-    }
-    
-    // Method 3: Look for lyrics in any div with substantial text
-    if (!lyricsContainer || lyricsContainer.length === 0) {
-      lyricsContainer = $('div').filter((i, el) => {
-        const text = $(el).text();
-        return text.length > 200 && text.includes('\n') && 
-               (text.includes('[') || text.includes(']') || 
-                text.match(/[A-Z][a-z]+/g)?.length > 10);
-      });
-      console.log(`Method 3 found ${lyricsContainer.length} containers`);
-    }
-    
-    // Method 4: Look for any element with lyrics-like content
-    if (!lyricsContainer || lyricsContainer.length === 0) {
-      lyricsContainer = $('*').filter((i, el) => {
-        const text = $(el).text();
-        const hasBrackets = text.includes('[') && text.includes(']');
-        const hasMultipleLines = (text.match(/\n/g) || []).length > 5;
-        const hasSongStructure = text.length > 300 && hasMultipleLines;
-        return hasSongStructure && (hasBrackets || text.match(/[A-Z][a-z]+/g)?.length > 15);
-      });
-      console.log(`Method 4 found ${lyricsContainer.length} containers`);
-    }
-
-    if (!lyricsContainer || lyricsContainer.length === 0) {
-      console.warn("No lyrics containers found with any method");
+      console.warn("Lyrics container not found.");
       return 'Lyrics not found.';
     }
 
@@ -452,25 +45,23 @@ function cleanLyrics($) {
     });
 
     if (cleanChunks.length === 0) {
-      console.warn("No lyric lines extracted from containers");
+      console.warn("No lyric lines extracted.");
       return 'Lyrics not found.';
     }
 
-    const cleanedLyrics = cleanChunks
+    return cleanChunks
       .join('\n')
       .replace(/\n{2,}/g, '\n\n')
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
       .join('\n');
-
-    console.log(`Successfully extracted ${cleanedLyrics.split('\n').length} lines of lyrics`);
-    return cleanedLyrics;
   } catch (err) {
     console.error("cleanLyrics failed:", err.message);
     return 'Lyrics not found due to error.';
   }
 }
+
 
 app.post('/search', async (req, res) => {
   const lyrics = req.body.lyrics;
@@ -494,7 +85,8 @@ app.post('/search', async (req, res) => {
 
         let videoId = null;
         try {
-          const videos = await ytSearch.search(query);
+          const ytSearch = await import('youtube-search-without-api-key');
+          const videos = await ytSearch.default.search(query);
           videoId = videos?.[0]?.id?.videoId || null;
         } catch (err) {
           console.error("YouTube search failed:", err.message);
@@ -502,106 +94,11 @@ app.post('/search', async (req, res) => {
 
         let lyricsText = 'Lyrics not found.';
         try {
-          // Try all methods in sequence
-          let pageData;
-          let methodUsed = 'none';
-          
-          // Method 1: Primary Genius scraping
-          try {
-            console.log(`\n=== Trying Method 1 for ${song.title} ===`);
-            pageData = await fetchLyricsWithRetry(song.url);
-            methodUsed = 'primary';
-            console.log(`✓ Method 1 succeeded for ${song.title}`);
-          } catch (primaryError) {
-            console.log(`✗ Method 1 failed for ${song.title}: ${primaryError.message}`);
-            
-            // Method 2: Alternative scraping approach
-            try {
-              console.log(`\n=== Trying Method 2 for ${song.title} ===`);
-              pageData = await fetchLyricsAlternative(song.url);
-              methodUsed = 'alternative';
-              console.log(`✓ Method 2 succeeded for ${song.title}`);
-            } catch (alternativeError) {
-              console.log(`✗ Method 2 failed for ${song.title}: ${alternativeError.message}`);
-              
-              // Method 3: Session-based scraping
-              try {
-                console.log(`\n=== Trying Method 3 for ${song.title} ===`);
-                pageData = await fetchLyricsWithSession(song.url);
-                methodUsed = 'session';
-                console.log(`✓ Method 3 succeeded for ${song.title}`);
-              } catch (sessionError) {
-                console.log(`✗ Method 3 failed for ${song.title}: ${sessionError.message}`);
-                
-                // Method 4: Alternative APIs
-                try {
-                  console.log(`\n=== Trying Method 4 (Alternative APIs) for ${song.title} ===`);
-                  const apiData = await fetchLyricsFromAlternativeAPI(song.title, song.primary_artist.name);
-                  methodUsed = 'alternative-api';
-                  console.log(`✓ Method 4 succeeded for ${song.title}`);
-                  
-                  // Parse the API response
-                  lyricsText = parseAlternativeLyrics(apiData, 'lyrics.ovh');
-                  
-                  // Add delay and continue to next song
-                  if (index < hits.length - 1) {
-                    const delayTime = 2000 + Math.random() * 3000;
-                    console.log(`Waiting ${Math.round(delayTime)}ms before next request...`);
-                    await delay(delayTime);
-                  }
-                  
-                  return {
-                    rank: index + 1,
-                    title: song.title,
-                    artist: song.primary_artist.name,
-                    videoId,
-                    lyricsText,
-                  };
-                } catch (apiError) {
-                  console.log(`✗ Method 4 failed for ${song.title}: ${apiError.message}`);
-                  
-                  // Method 5: Alternative web sources
-                  try {
-                    console.log(`\n=== Trying Method 5 (Alternative Sources) for ${song.title} ===`);
-                    pageData = await fetchLyricsFromAlternativeSource(song.title, song.primary_artist.name);
-                    methodUsed = 'alternative-source';
-                    console.log(`✓ Method 5 succeeded for ${song.title}`);
-                  } catch (sourceError) {
-                    console.log(`✗ Method 5 failed for ${song.title}: ${sourceError.message}`);
-                    throw new Error(`All methods failed: ${primaryError.message}, ${alternativeError.message}, ${sessionError.message}, ${apiError.message}, ${sourceError.message}`);
-                  }
-                }
-              }
-            }
-          }
-          
-          // If we got page data, extract lyrics based on the source
-          if (pageData && methodUsed !== 'alternative-api') {
-            const $ = cheerio.load(pageData);
-            
-            // Determine the source and use appropriate parsing
-            if (methodUsed === 'alternative-source') {
-              // Try to determine which source worked
-              const url = pageData.includes('musixmatch') ? 'musixmatch' :
-                         pageData.includes('azlyrics') ? 'azlyrics' :
-                         pageData.includes('lyrics.com') ? 'lyrics.com' :
-                         pageData.includes('songlyrics') ? 'songlyrics' : 'generic';
-              lyricsText = cleanLyricsFromAlternativeSource($, url);
-            } else {
-              // Use standard Genius parsing
-              lyricsText = cleanLyrics($);
-            }
-          }
-          
-          // Add delay between requests
-          if (index < hits.length - 1) {
-            const delayTime = 2000 + Math.random() * 3000; // Random delay between 2-5 seconds
-            console.log(`Waiting ${Math.round(delayTime)}ms before next request...`);
-            await delay(delayTime);
-          }
+          const pageRes = await axios.get(song.url);
+          const $ = cheerio.load(pageRes.data);
+          lyricsText = cleanLyrics($);
         } catch (err) {
-          console.error(`\n❌ All methods failed for ${song.title}:`, err.message);
-          lyricsText = 'Lyrics not available (blocked or unavailable).';
+          console.error('Failed to fetch or clean lyrics:', err.message);
         }
 
         return {
@@ -622,148 +119,6 @@ app.post('/search', async (req, res) => {
   }
 });
 
-// Debug endpoint to test scraping
-app.get('/debug/:songId', async (req, res) => {
-  const songId = req.params.songId;
-  const testUrl = `https://genius.com/songs/${songId}`;
-  
-  console.log(`\n=== DEBUG: Testing scraping for ${testUrl} ===`);
-  
-  try {
-    const results = {
-      method1: { success: false, error: null, data: null },
-      method2: { success: false, error: null, data: null },
-      method3: { success: false, error: null, data: null },
-      method4: { success: false, error: null, data: null },
-      method5: { success: false, error: null, data: null }
-    };
-    
-    // Test Method 1
-    try {
-      console.log('Testing Method 1...');
-      const data1 = await fetchLyricsWithRetry(testUrl);
-      results.method1 = { success: true, error: null, data: data1.substring(0, 500) + '...' };
-      console.log('✓ Method 1 succeeded');
-    } catch (error) {
-      results.method1 = { success: false, error: error.message, data: null };
-      console.log('✗ Method 1 failed:', error.message);
-    }
-    
-    // Test Method 2
-    try {
-      console.log('Testing Method 2...');
-      const data2 = await fetchLyricsAlternative(testUrl);
-      results.method2 = { success: true, error: null, data: data2.substring(0, 500) + '...' };
-      console.log('✓ Method 2 succeeded');
-    } catch (error) {
-      results.method2 = { success: false, error: error.message, data: null };
-      console.log('✗ Method 2 failed:', error.message);
-    }
-    
-    // Test Method 3
-    try {
-      console.log('Testing Method 3...');
-      const data3 = await fetchLyricsWithSession(testUrl);
-      results.method3 = { success: true, error: null, data: data3.substring(0, 500) + '...' };
-      console.log('✓ Method 3 succeeded');
-    } catch (error) {
-      results.method3 = { success: false, error: error.message, data: null };
-      console.log('✗ Method 3 failed:', error.message);
-    }
-    
-    // Test Method 4 (Alternative APIs)
-    try {
-      console.log('Testing Method 4...');
-      const data4 = await fetchLyricsFromAlternativeAPI('Test Song', 'Test Artist');
-      results.method4 = { success: true, error: null, data: JSON.stringify(data4).substring(0, 500) + '...' };
-      console.log('✓ Method 4 succeeded');
-    } catch (error) {
-      results.method4 = { success: false, error: error.message, data: null };
-      console.log('✗ Method 4 failed:', error.message);
-    }
-    
-    // Test Method 5 (Alternative Sources)
-    try {
-      console.log('Testing Method 5...');
-      const data5 = await fetchLyricsFromAlternativeSource('Test Song', 'Test Artist');
-      results.method5 = { success: true, error: null, data: data5.substring(0, 500) + '...' };
-      console.log('✓ Method 5 succeeded');
-    } catch (error) {
-      results.method5 = { success: false, error: error.message, data: null };
-      console.log('✗ Method 5 failed:', error.message);
-    }
-    
-    res.json({
-      url: testUrl,
-      timestamp: new Date().toISOString(),
-      results
-    });
-    
-  } catch (error) {
-    res.json({
-      url: testUrl,
-      timestamp: new Date().toISOString(),
-      error: error.message,
-      results: null
-    });
-  }
-});
-
-// Status endpoint to check service health
-app.get('/status', async (req, res) => {
-  try {
-    // Test if Genius API is working
-    let geniusStatus = 'unknown';
-    try {
-      const testResponse = await axios.get('https://api.genius.com/search', {
-        params: { q: 'test' },
-        headers: { Authorization: `Bearer ${GENIUS_ACCESS_TOKEN}` },
-        timeout: 5000
-      });
-      geniusStatus = testResponse.status === 200 ? 'working' : 'error';
-    } catch (error) {
-      geniusStatus = error.response?.status === 401 ? 'auth_error' : 'error';
-    }
-
-    // Test if alternative API is working
-    let alternativeApiStatus = 'unknown';
-    try {
-      const testResponse = await axios.get('https://api.lyrics.ovh/v1/test/test', {
-        timeout: 5000
-      });
-      alternativeApiStatus = testResponse.status === 200 ? 'working' : 'error';
-    } catch (error) {
-      alternativeApiStatus = error.response?.status === 404 ? 'working' : 'error';
-    }
-
-    res.json({
-      status: 'operational',
-      timestamp: new Date().toISOString(),
-      services: {
-        genius_api: geniusStatus,
-        alternative_api: alternativeApiStatus,
-        genius_scraping: 'blocked', // We know this is blocked
-        alternative_sources: 'available'
-      },
-      methods: {
-        method1: 'Genius Scraping (Blocked on Render)',
-        method2: 'Alternative Scraping (Blocked on Render)',
-        method3: 'Session-based Scraping (Blocked on Render)',
-        method4: 'Alternative APIs (Working)',
-        method5: 'Alternative Web Sources (Working)'
-      }
-    });
-  } catch (error) {
-    res.json({
-      status: 'error',
-      timestamp: new Date().toISOString(),
-      error: error.message
-    });
-  }
-});
-
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
-  console.log(`Debug endpoint available at http://localhost:${port}/debug/[song-id]`);
-  console.log(`Status endpoint available at http://localhost:${port}/status`);
 });
