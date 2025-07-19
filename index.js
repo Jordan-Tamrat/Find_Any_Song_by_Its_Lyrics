@@ -72,11 +72,47 @@ app.post('/search', async (req, res) => {
       headers: { Authorization: `Bearer ${GENIUS_ACCESS_TOKEN}` },
     });
 
-    const hits = geniusRes.data.response.hits;
+    let hits = geniusRes.data.response.hits;
 
     if (!hits || hits.length === 0) {
       return res.render('index', { results: null, error: "No matching songs found." });
     }
+
+    // Improved ranking logic
+    const queryLower = lyrics.toLowerCase();
+    hits = hits.sort((a, b) => {
+      const sa = a.result;
+      const sb = b.result;
+
+      // 1. Artist match boost (if artist name is in query)
+      const aArtistMatch = queryLower.includes(sa.primary_artist.name.toLowerCase()) ? 1 : 0;
+      const bArtistMatch = queryLower.includes(sb.primary_artist.name.toLowerCase()) ? 1 : 0;
+      if (aArtistMatch !== bArtistMatch) return bArtistMatch - aArtistMatch;
+
+      // 2. Title/full_title match boost (if title or full_title is in query)
+      const aTitleMatch = queryLower.includes(sa.title.toLowerCase()) || queryLower.includes(sa.full_title.toLowerCase()) ? 1 : 0;
+      const bTitleMatch = queryLower.includes(sb.title.toLowerCase()) || queryLower.includes(sb.full_title.toLowerCase()) ? 1 : 0;
+      if (aTitleMatch !== bTitleMatch) return bTitleMatch - aTitleMatch;
+
+      // 3. Older first (lower year, month, day)
+      const aYear = sa.release_date_components?.year || 9999;
+      const bYear = sb.release_date_components?.year || 9999;
+      if (aYear !== bYear) return aYear - bYear;
+      const aMonth = sa.release_date_components?.month || 99;
+      const bMonth = sb.release_date_components?.month || 99;
+      if (aMonth !== bMonth) return aMonth - bMonth;
+      const aDay = sa.release_date_components?.day || 99;
+      const bDay = sb.release_date_components?.day || 99;
+      if (aDay !== bDay) return aDay - bDay;
+
+      // 4. Annotation count (more = better)
+      const aAnn = sa.annotation_count || 0;
+      const bAnn = sb.annotation_count || 0;
+      if (aAnn !== bAnn) return bAnn - aAnn;
+
+      // Default: keep original order
+      return 0;
+    });
 
     const results = await Promise.all(
       hits.map(async (hit, index) => {
