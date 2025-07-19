@@ -85,8 +85,10 @@ app.post('/search', async (req, res) => {
 
         let videoId = null;
         try {
-          const ytSearch = await import('youtube-search-without-api-key');
-          const videos = await ytSearch.default.search(query);
+          const ytSearchModule = await import('youtube-search-without-api-key');
+          const ytSearch = ytSearchModule.search || ytSearchModule.default?.search;
+          if (!ytSearch) throw new Error('ytSearch function not found in module');
+          const videos = await ytSearch(query);
           videoId = videos?.[0]?.id?.videoId || null;
         } catch (err) {
           console.error("YouTube search failed:", err.message);
