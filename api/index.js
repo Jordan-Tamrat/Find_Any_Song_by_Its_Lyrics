@@ -112,20 +112,30 @@ app.post('/search', async (req, res) => {
           const $ = cheerio.load(pageRes.data);
           lyricsText = cleanLyrics($);
         } catch (err) {
-          // Fallback: text render mirror (helps when Genius blocks serverless IPs)
+          // ignore; will try mirror fallback below
+        }
+
+        // Fallback: text-render mirror (helps when Genius blocks serverless IPs)
+        if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
             const mirrorUrl = `https://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
             const mirrorRes = await axios.get(mirrorUrl, { responseType: 'text' });
-            const text = mirrorRes.data || '';
-            const start = text.indexOf('data-lyrics-container');
-            if (start !== -1) {
-              // crude extraction when HTML present
-              const $m = cheerio.load(text);
-              lyricsText = cleanLyrics($m);
-            } else {
-              lyricsText = text;
+            const fullText = (mirrorRes.data || '').trim();
+            // Try to extract between "Lyrics" header and "Embed"
+            let extracted = '';
+            const m = fullText.match(/Lyrics\s*([\s\S]*?)\s*Embed/i);
+            if (m && m[1]) {
+              extracted = m[1].trim();
             }
-          } catch (_) {}
+            if (!extracted) {
+              // Fallback: find first [Verse or chorus markers
+              const idx = fullText.search(/\[(Verse|Chorus|Intro|Outro)/i);
+              if (idx !== -1) extracted = fullText.slice(idx).trim();
+            }
+            lyricsText = extracted || fullText || lyricsText;
+          } catch (_) {
+            // keep previous lyricsText
+          }
         }
         return {
           rank: index + 1,
