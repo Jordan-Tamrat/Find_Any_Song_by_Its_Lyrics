@@ -1,5 +1,4 @@
 const express = require('express');
-const serverless = require('serverless-http');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
@@ -124,4 +123,6 @@ app.post('/search', async (req, res) => {
   }
 });
 
-module.exports = serverless(app); 
+module.exports = (req, res) => {
+  return app(req, res);
+};
