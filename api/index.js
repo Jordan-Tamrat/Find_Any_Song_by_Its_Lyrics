@@ -14,6 +14,10 @@ if (!GENIUS_ACCESS_TOKEN) {
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
+app.use('/public', express.static(path.join(process.cwd(), 'public')));
+app.get('/style.css', (_req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'style.css'));
+});
 
 app.get('/', (req, res) => {
   res.render('index', { results: null, error: null });
