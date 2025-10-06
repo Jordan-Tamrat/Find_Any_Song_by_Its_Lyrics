@@ -112,7 +112,12 @@ app.post('/search', async (req, res) => {
           const $ = cheerio.load(pageRes.data);
           lyricsText = cleanLyrics($);
         } catch (err) {
-          // Failed to fetch or clean lyrics
+          // Fallback: text render mirror (helps when Genius blocks serverless IPs)
+          try {
+            const mirrorUrl = `https://r.jina.ai/http://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
+            const mirrorRes = await axios.get(mirrorUrl);
+            lyricsText = mirrorRes.data || lyricsText;
+          } catch (_) {}
         }
         return {
           rank: index + 1,
