@@ -120,19 +120,20 @@ app.post('/search', async (req, res) => {
           try {
             const mirrorUrl = `https://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
             const mirrorRes = await axios.get(mirrorUrl, { responseType: 'text' });
-            const fullText = (mirrorRes.data || '').trim();
-            // Try to extract between "Lyrics" header and "Embed"
-            let extracted = '';
-            const m = fullText.match(/Lyrics\s*([\s\S]*?)\s*Embed/i);
-            if (m && m[1]) {
-              extracted = m[1].trim();
-            }
-            if (!extracted) {
-              // Fallback: find first [Verse or chorus markers
-              const idx = fullText.search(/\[(Verse|Chorus|Intro|Outro)/i);
-              if (idx !== -1) extracted = fullText.slice(idx).trim();
-            }
-            lyricsText = extracted || fullText || lyricsText;
+            const fullText = (mirrorRes.data || '').replace(/\r/g, '').trim();
+
+            // 1) If "Embed" exists, trim anything after it
+            let uptoEmbed = fullText.split(/\n?\s*Embed\s*$/i)[0] || fullText;
+
+            // 2) Remove leading header lines until we hit a likely lyric section
+            const lines = uptoEmbed.split('\n');
+            const startIndex = lines.findIndex(l => /\[(Verse|Chorus|Bridge|Intro|Outro)\b/i.test(l) || l.trim().length > 20);
+            let cleaned = (startIndex >= 0 ? lines.slice(startIndex) : lines).join('\n').trim();
+
+            // 3) If still too short, keep the original mirror text
+            if (cleaned.length < 40) cleaned = fullText;
+
+            lyricsText = cleaned || lyricsText;
           } catch (_) {
             // keep previous lyricsText
           }
