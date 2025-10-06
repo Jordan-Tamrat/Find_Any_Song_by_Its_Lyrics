@@ -54,6 +54,7 @@ function cleanLyrics($) {
 app.post('/search', async (req, res) => {
   const lyrics = req.body.lyrics;
   try {
+    console.log('[search] query="' + lyrics + '"');
     const geniusRes = await axios.get('https://api.genius.com/search', {
       params: { q: lyrics },
       headers: { Authorization: `Bearer ${GENIUS_ACCESS_TOKEN}` },
@@ -90,6 +91,7 @@ app.post('/search', async (req, res) => {
       hits.map(async (hit, index) => {
         const song = hit.result;
         const query = `${song.title} ${song.primary_artist.name}`;
+        console.log(`[song] #${index + 1} ${song.full_title || song.title} → ${song.url}`);
         let videoId = null;
         try {
           const ytSearchModule = await import('youtube-search-without-api-key');
@@ -109,9 +111,12 @@ app.post('/search', async (req, res) => {
               'Accept-Language': 'en-US,en;q=0.9'
             }
           });
+          console.log(`[lyrics] primary OK size=${(pageRes.data||'').length}`);
           const $ = cheerio.load(pageRes.data);
           lyricsText = cleanLyrics($);
         } catch (err) {
+          const status = err?.response?.status;
+          console.log(`[lyrics] primary FAIL status=${status} msg=${err?.message}`);
           // ignore; will try mirror fallback below
         }
 
@@ -121,6 +126,7 @@ app.post('/search', async (req, res) => {
             const mirrorUrl = `https://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
             const mirrorRes = await axios.get(mirrorUrl, { responseType: 'text' });
             const fullText = (mirrorRes.data || '').replace(/\r/g, '').trim();
+            console.log(`[lyrics] mirror OK len=${fullText.length}`);
 
             // 1) If "Embed" exists, trim anything after it
             let uptoEmbed = fullText.split(/\n?\s*Embed\s*$/i)[0] || fullText;
@@ -134,7 +140,8 @@ app.post('/search', async (req, res) => {
             if (cleaned.length < 40) cleaned = fullText;
 
             lyricsText = cleaned || lyricsText;
-          } catch (_) {
+          } catch (e) {
+            console.log('[lyrics] mirror FAIL', e?.message);
             // keep previous lyricsText
           }
         }
@@ -147,8 +154,10 @@ app.post('/search', async (req, res) => {
         };
       })
     );
+    console.log('[search] done results=' + results.length);
     res.render('index', { results, error: null });
   } catch (error) {
+    console.log('[search] error', error?.message);
     res.render('index', { results: null, error: "Error fetching data from Genius or YouTube. Possible causes: Invalid API tokens, no internet connection, or service unavailable." });
   }
 });
