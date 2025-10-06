@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "builds": [{ "src": "api/index.js", "use": "@vercel/node" }],
+  "routes": [
+    { "src": "/public/(.*)", "dest": "/public/$1" },
+    { "src": "/favicon.ico", "dest": "/public/favicon.ico" },
+    { "src": "/favicon.png", "dest": "/public/favicon.png" },
+    { "src": "/style.css", "dest": "/public/style.css" },
+    { "src": "/(.*)", "dest": "/api/index.js" }
+  ]
+} 
