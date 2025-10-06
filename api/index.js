@@ -123,9 +123,17 @@ app.post('/search', async (req, res) => {
         // Fallback: text-render mirror (helps when Genius blocks serverless IPs)
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
-            const mirrorUrl = `https://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
-            const mirrorRes = await axios.get(mirrorUrl, { responseType: 'text' });
-            const fullText = (mirrorRes.data || '').replace(/\r/g, '').trim();
+            // Try HTTPS mirror first (403/451 can be scheme-dependent)
+            const httpsMirror = `https://r.jina.ai/http/https://${song.url.replace(/^https?:\/\//, '')}`;
+            let mirrorRes = await axios.get(httpsMirror, { responseType: 'text' });
+            let textPayload = (mirrorRes.data || '').replace(/\r/g, '').trim();
+            if (textPayload.length < 40) {
+              // Try HTTP mirror as secondary
+              const httpMirror = `https://r.jina.ai/http/http://${song.url.replace(/^https?:\/\//, '')}`;
+              mirrorRes = await axios.get(httpMirror, { responseType: 'text' });
+              textPayload = (mirrorRes.data || '').replace(/\r/g, '').trim();
+            }
+            const fullText = textPayload;
             console.log(`[lyrics] mirror OK len=${fullText.length}`);
 
             // 1) If "Embed" exists, trim anything after it
