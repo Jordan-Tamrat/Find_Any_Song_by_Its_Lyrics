@@ -14,10 +14,6 @@ if (!GENIUS_ACCESS_TOKEN) {
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
-app.use('/public', express.static(path.join(process.cwd(), 'public')));
-app.get('/style.css', (_req, res) => {
-  res.sendFile(path.join(process.cwd(), 'public', 'style.css'));
-});
 
 app.get('/', (req, res) => {
   res.render('index', { results: null, error: null });
@@ -118,9 +114,17 @@ app.post('/search', async (req, res) => {
         } catch (err) {
           // Fallback: text render mirror (helps when Genius blocks serverless IPs)
           try {
-            const mirrorUrl = `https://r.jina.ai/http://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
-            const mirrorRes = await axios.get(mirrorUrl);
-            lyricsText = mirrorRes.data || lyricsText;
+            const mirrorUrl = `https://r.jina.ai/http://${song.url.replace(/^https?:\/\//, '')}`;
+            const mirrorRes = await axios.get(mirrorUrl, { responseType: 'text' });
+            const text = mirrorRes.data || '';
+            const start = text.indexOf('data-lyrics-container');
+            if (start !== -1) {
+              // crude extraction when HTML present
+              const $m = cheerio.load(text);
+              lyricsText = cleanLyrics($m);
+            } else {
+              lyricsText = text;
+            }
           } catch (_) {}
         }
         return {
