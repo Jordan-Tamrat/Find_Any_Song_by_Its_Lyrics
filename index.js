@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const app = express();
+const path = require('path');
 const port = process.env.PORT || 3000;
 
 require('dotenv').config();  
@@ -13,7 +14,9 @@ if (!GENIUS_ACCESS_TOKEN) {
 }
 
 app.use(express.static('public'));
+app.use('/public', express.static(path.join(__dirname, 'public')));
 app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'api', 'views'));
 app.use(express.urlencoded({ extended: true }));
 
 
@@ -132,7 +135,13 @@ app.post('/search', async (req, res) => {
 
         let lyricsText = 'Lyrics not found.';
         try {
-          const pageRes = await axios.get(song.url);
+          const pageRes = await axios.get(song.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9'
+            }
+          });
           const $ = cheerio.load(pageRes.data);
           lyricsText = cleanLyrics($);
         } catch (err) {
