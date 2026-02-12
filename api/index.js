@@ -148,9 +148,9 @@ app.post('/search', async (req, res) => {
         // Note: This is also risky on serverless, but worth a shot if everything else fails.
         // We'll skip it to avoid getting the IP permanently blacklisted by Google.
 
-        // Fallback 4: Return a friendly message with a link
+        // Fallback 4: Return null if lyrics are not found so the frontend can show a button
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
-            lyricsText = `Sorry, we couldn't fetch the lyrics for this song due to copyright restrictions on our server provider.\n\nYou can read the full lyrics on Genius here:\n${song.url}`;
+            lyricsText = null; 
         }
         return {
           rank: index + 1,
@@ -158,6 +158,7 @@ app.post('/search', async (req, res) => {
           artist: song.primary_artist.name,
           videoId,
           lyricsText,
+          url: song.url
         };
       })
     );

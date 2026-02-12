@@ -3,11 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <title>Lyrics Search</title>
-  <base href="/">
-  <link rel="stylesheet" href="/public/style.css?v=4" type="text/css">
+  <link rel="stylesheet" href="/style.css" type="text/css">
 </head>
 
-<body class="dark">
+<body>
+  <!-- Animated Background -->
+  <div class="music-bg">
+    <span>♪</span><span>♫</span><span>♩</span><span>♬</span><span>♭</span><span>♮</span>
+    <span>♪</span><span>♫</span><span>♩</span><span>♬</span><span>♭</span><span>♮</span>
+  </div>
+
   <!-- Theme Toggle -->
   <div class="theme-toggle">
     <input type="checkbox" id="toggle-mode" />
@@ -55,7 +60,16 @@
         <% } %>
 
         <div class="lyrics-box">
-          <%= song.lyricsText %>
+          <% if (song.lyricsText) { %>
+            <%= song.lyricsText %>
+          <% } else { %>
+            <div class="lyrics-fallback">
+              <p>We couldn't fetch the full lyrics automatically.</p>
+              <a href="<%= song.url %>" target="_blank" class="genius-btn">
+                Read Full Lyrics on Genius ↗
+              </a>
+            </div>
+          <% } %>
         </div>
       </div>
     </li>
