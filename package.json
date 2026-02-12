@@ -7,7 +7,13 @@
     "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["lyrics", "music", "search", "genius", "youtube"],
+  "keywords": [
+    "lyrics",
+    "music",
+    "search",
+    "genius",
+    "youtube"
+  ],
   "author": "Jordan",
   "license": "ISC",
   "description": "A website to find songs by their lyrics using Genius API and YouTube search",
@@ -17,6 +23,7 @@
     "dotenv": "^17.0.1",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
+    "fake-useragent": "^1.0.1",
     "youtube-search-without-api-key": "^2.0.7"
   }
 }
