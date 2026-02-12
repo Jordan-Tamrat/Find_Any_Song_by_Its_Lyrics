@@ -123,31 +123,40 @@ app.post('/search', async (req, res) => {
         // Fallback: text-render mirror (helps when Genius blocks serverless IPs)
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
-            // Try HTTPS mirror first (403/451 can be scheme-dependent)
-            const httpsMirror = `https://r.jina.ai/http/https://${song.url.replace(/^https?:\/\//, '')}`;
-            let mirrorRes = await axios.get(httpsMirror, { responseType: 'text' });
+            // Try Jina.ai mirror which often bypasses restrictions
+            // Correct format: https://r.jina.ai/<URL>
+            const httpsMirror = `https://r.jina.ai/${song.url}`;
+            let mirrorRes = await axios.get(httpsMirror, { 
+              responseType: 'text',
+              timeout: 10000 // 10s timeout
+            });
+            
             let textPayload = (mirrorRes.data || '').replace(/\r/g, '').trim();
-            if (textPayload.length < 40) {
-              // Try HTTP mirror as secondary
-              const httpMirror = `https://r.jina.ai/http/http://${song.url.replace(/^https?:\/\//, '')}`;
-              mirrorRes = await axios.get(httpMirror, { responseType: 'text' });
-              textPayload = (mirrorRes.data || '').replace(/\r/g, '').trim();
-            }
             const fullText = textPayload;
             console.log(`[lyrics] mirror OK len=${fullText.length}`);
 
-            // 1) If "Embed" exists, trim anything after it
-            let uptoEmbed = fullText.split(/\n?\s*Embed\s*$/i)[0] || fullText;
+            // 1) If "Embed" exists at the end, trim it (common in Genius lyrics)
+            let uptoEmbed = fullText.replace(/\n?\s*Embed\s*$/i, '');
 
-            // 2) Remove leading header lines until we hit a likely lyric section
+            // 2) Remove Jina/Markdown metadata header if present
+            // Jina often puts "Title: ... URL: ..." at the top. We want to skip that.
+            // We look for the first line that looks like a lyric section header [Verse] or is substantial text
             const lines = uptoEmbed.split('\n');
-            const startIndex = lines.findIndex(l => /\[(Verse|Chorus|Bridge|Intro|Outro)\b/i.test(l) || l.trim().length > 20);
+            const startIndex = lines.findIndex(l => 
+              /^\[(Verse|Chorus|Bridge|Intro|Outro|Pre-Chorus|Hook)/i.test(l) || 
+              (l.trim().length > 0 && !l.startsWith('Title:') && !l.startsWith('URLSource:') && !l.startsWith('Markdown Content:'))
+            );
+            
             let cleaned = (startIndex >= 0 ? lines.slice(startIndex) : lines).join('\n').trim();
 
-            // 3) If still too short, keep the original mirror text
-            if (cleaned.length < 40) cleaned = fullText;
+            // 3) If still too short, keep the original mirror text but try to strip common Jina headers
+            if (cleaned.length < 20) {
+                 cleaned = fullText; 
+            }
 
-            lyricsText = cleaned || lyricsText;
+            if (cleaned.length > 20) {
+                lyricsText = cleaned;
+            }
           } catch (e) {
             console.log('[lyrics] mirror FAIL', e?.message);
             // keep previous lyricsText
