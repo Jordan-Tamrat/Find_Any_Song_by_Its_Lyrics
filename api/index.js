@@ -120,7 +120,23 @@ app.post('/search', async (req, res) => {
           // ignore; will try mirror fallback below
         }
 
-        // Fallback: AZLyrics (if Genius fails or is blocked)
+        // Fallback: Lyrics.ovh API (Free, no key, serverless-friendly)
+        if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
+          try {
+             const ovhUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(song.primary_artist.name)}/${encodeURIComponent(song.title)}`;
+             console.log(`[lyrics] trying Lyrics.ovh: ${ovhUrl}`);
+             
+             const ovhRes = await axios.get(ovhUrl, { timeout: 5000 });
+             if (ovhRes.data && ovhRes.data.lyrics) {
+               lyricsText = ovhRes.data.lyrics;
+               console.log(`[lyrics] Lyrics.ovh success len=${lyricsText.length}`);
+             }
+          } catch (e) {
+             console.log(`[lyrics] Lyrics.ovh FAIL: ${e.message}`);
+          }
+        }
+
+        // Fallback 2: AZLyrics (Last resort)
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
             const azArtist = song.primary_artist.name.toLowerCase().replace(/[^a-z0-9]/g, '');
