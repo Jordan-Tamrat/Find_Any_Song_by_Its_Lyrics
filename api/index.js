@@ -126,7 +126,11 @@ app.post('/search', async (req, res) => {
         // Fallback: Lyrics.ovh API (Free, no key, serverless-friendly)
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
-             const ovhUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(song.primary_artist.name)}/${encodeURIComponent(song.title)}`;
+             // Lyrics.ovh often uses "Artist" "Title" without strict encoding issues, but let's try clean names
+             const cleanArtist = song.primary_artist.name.replace(/ \([^)]+\)/g, '').trim(); // Remove (feat. X)
+             const cleanTitle = song.title.replace(/ \([^)]+\)/g, '').trim();
+             
+             const ovhUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTitle)}`;
              console.log(`[lyrics] trying Lyrics.ovh: ${ovhUrl}`);
              
              const ovhRes = await axios.get(ovhUrl, { timeout: 5000 });
@@ -139,48 +143,14 @@ app.post('/search', async (req, res) => {
           }
         }
 
-        // Fallback 2: AZLyrics (Last resort)
+        // Fallback 3: Happi.dev API (Free tier) or similar public APIs? 
+        // Actually, let's try a direct google scrape as a last "Hail Mary" 
+        // Note: This is also risky on serverless, but worth a shot if everything else fails.
+        // We'll skip it to avoid getting the IP permanently blacklisted by Google.
+
+        // Fallback 4: Return a friendly message with a link
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
-          try {
-            const azArtist = song.primary_artist.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-            const azTitle = song.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (azArtist && azTitle) {
-               const azUrl = `https://www.azlyrics.com/lyrics/${azArtist}/${azTitle}.html`;
-               console.log(`[lyrics] trying AZLyrics: ${azUrl}`);
-               
-               const azRes = await axios.get(azUrl, {
-                 headers: {
-                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
-                 },
-                 timeout: 5000,
-                 responseType: 'text'
-               });
-               
-               // Robust regex extraction for AZLyrics content
-               // Pattern: <!-- Usage ... --> ... </div>
-               const startMarker = '<!-- Usage of azlyrics.com content by any third-party lyrics provider is prohibited by our licensing agreement. Sorry about that. -->';
-               const endMarker = '</div>';
-               
-               if (azRes.data && azRes.data.includes(startMarker)) {
-                 let parts = azRes.data.split(startMarker);
-                 if (parts.length > 1) {
-                   let rawContent = parts[1].split(endMarker)[0];
-                   // Strip HTML tags (br, i, b, etc.)
-                   let cleanText = rawContent
-                     .replace(/<br\s*\/?>/gi, '\n')
-                     .replace(/<\/?[^>]+(>|$)/g, "")
-                     .trim();
-                     
-                   if (cleanText.length > 20) {
-                     lyricsText = cleanText;
-                     console.log(`[lyrics] AZLyrics success len=${cleanText.length}`);
-                   }
-                 }
-               }
-            }
-          } catch (e) {
-            console.log(`[lyrics] AZLyrics FAIL: ${e.message}`);
-          }
+            lyricsText = `Sorry, we couldn't fetch the lyrics for this song due to copyright restrictions on our server provider.\n\nYou can read the full lyrics on Genius here:\n${song.url}`;
         }
         return {
           rank: index + 1,
