@@ -123,10 +123,10 @@ app.post('/search', async (req, res) => {
           // ignore; will try mirror fallback below
         }
 
-        // Fallback: Lyrics.ovh API (Free, no key, serverless-friendly)
+        // Fallback: Lyrics.ovh API
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
-             // Lyrics.ovh often uses "Artist" "Title" without strict encoding issues, but let's try clean names
+             
              const cleanArtist = song.primary_artist.name.replace(/ \([^)]+\)/g, '').trim(); // Remove (feat. X)
              const cleanTitle = song.title.replace(/ \([^)]+\)/g, '').trim();
              
@@ -142,11 +142,6 @@ app.post('/search', async (req, res) => {
              console.log(`[lyrics] Lyrics.ovh FAIL: ${e.message}`);
           }
         }
-
-        // Fallback 3: Happi.dev API (Free tier) or similar public APIs? 
-        // Actually, let's try a direct google scrape as a last "Hail Mary" 
-        // Note: This is also risky on serverless, but worth a shot if everything else fails.
-        // We'll skip it to avoid getting the IP permanently blacklisted by Google.
 
         // Fallback 4: Return null if lyrics are not found so the frontend can show a button
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
