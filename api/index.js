@@ -120,46 +120,47 @@ app.post('/search', async (req, res) => {
           // ignore; will try mirror fallback below
         }
 
-        // Fallback: text-render mirror (helps when Genius blocks serverless IPs)
+        // Fallback: AZLyrics (if Genius fails or is blocked)
         if (!lyricsText || lyricsText === 'Lyrics not found.' || lyricsText.length < 40) {
           try {
-            // Try Jina.ai mirror which often bypasses restrictions
-            // Correct format: https://r.jina.ai/<URL>
-            const httpsMirror = `https://r.jina.ai/${song.url}`;
-            let mirrorRes = await axios.get(httpsMirror, { 
-              responseType: 'text',
-              timeout: 10000 // 10s timeout
-            });
-            
-            let textPayload = (mirrorRes.data || '').replace(/\r/g, '').trim();
-            const fullText = textPayload;
-            console.log(`[lyrics] mirror OK len=${fullText.length}`);
-
-            // 1) If "Embed" exists at the end, trim it (common in Genius lyrics)
-            let uptoEmbed = fullText.replace(/\n?\s*Embed\s*$/i, '');
-
-            // 2) Remove Jina/Markdown metadata header if present
-            // Jina often puts "Title: ... URL: ..." at the top. We want to skip that.
-            // We look for the first line that looks like a lyric section header [Verse] or is substantial text
-            const lines = uptoEmbed.split('\n');
-            const startIndex = lines.findIndex(l => 
-              /^\[(Verse|Chorus|Bridge|Intro|Outro|Pre-Chorus|Hook)/i.test(l) || 
-              (l.trim().length > 0 && !l.startsWith('Title:') && !l.startsWith('URLSource:') && !l.startsWith('Markdown Content:'))
-            );
-            
-            let cleaned = (startIndex >= 0 ? lines.slice(startIndex) : lines).join('\n').trim();
-
-            // 3) If still too short, keep the original mirror text but try to strip common Jina headers
-            if (cleaned.length < 20) {
-                 cleaned = fullText; 
-            }
-
-            if (cleaned.length > 20) {
-                lyricsText = cleaned;
+            const azArtist = song.primary_artist.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const azTitle = song.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (azArtist && azTitle) {
+               const azUrl = `https://www.azlyrics.com/lyrics/${azArtist}/${azTitle}.html`;
+               console.log(`[lyrics] trying AZLyrics: ${azUrl}`);
+               
+               const azRes = await axios.get(azUrl, {
+                 headers: {
+                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+                 },
+                 timeout: 5000,
+                 responseType: 'text'
+               });
+               
+               // Robust regex extraction for AZLyrics content
+               // Pattern: <!-- Usage ... --> ... </div>
+               const startMarker = '<!-- Usage of azlyrics.com content by any third-party lyrics provider is prohibited by our licensing agreement. Sorry about that. -->';
+               const endMarker = '</div>';
+               
+               if (azRes.data && azRes.data.includes(startMarker)) {
+                 let parts = azRes.data.split(startMarker);
+                 if (parts.length > 1) {
+                   let rawContent = parts[1].split(endMarker)[0];
+                   // Strip HTML tags (br, i, b, etc.)
+                   let cleanText = rawContent
+                     .replace(/<br\s*\/?>/gi, '\n')
+                     .replace(/<\/?[^>]+(>|$)/g, "")
+                     .trim();
+                     
+                   if (cleanText.length > 20) {
+                     lyricsText = cleanText;
+                     console.log(`[lyrics] AZLyrics success len=${cleanText.length}`);
+                   }
+                 }
+               }
             }
           } catch (e) {
-            console.log('[lyrics] mirror FAIL', e?.message);
-            // keep previous lyricsText
+            console.log(`[lyrics] AZLyrics FAIL: ${e.message}`);
           }
         }
         return {
